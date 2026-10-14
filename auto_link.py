@@ -1,0 +1,569 @@
+#!/usr/bin/env python3
+"""
+==============================================================================
+ auto_link 🔗
+ Fast, multi-threaded broken link checker and cleaner for HTML documents.
+==============================================================================
+"""
+
+import argparse
+import os
+import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlparse
+
+import requests
+from bs4 import BeautifulSoup
+
+# Script Metadata & GitHub source for the self-update feature
+__version__ = "1.2.0"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/tokaiteio1993-1988/auto_link/main/auto_link.py"
+
+# ==============================================================================
+# Terminal Color Codes (ANSI)
+# Used to print colored status messages in terminal/console output.
+# ==============================================================================
+RED = "\033[91m"
+GREEN = "\033[92m"
+YELLOW = "\033[93m"
+BLUE = "\033[94m"
+CYAN = "\033[96m"
+WHITE = "\033[97m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
+
+# ==============================================================================
+# Class: LinkChecker
+# ------------------------------------------------------------------------------
+# Responsible for checking if URLs are alive.
+# Features:
+# 1. Connection Pooling (requests.Session) -> Reuses TCP connections.
+# 2. Result Caching -> If a link appears 10 times, we only test it once.
+# 3. Thread-Safe Locking -> Prevents concurrency conflicts in multi-threading.
+# ==============================================================================
+class LinkChecker:
+    """Manages thread-safe link verification and caching."""
+
+    def __init__(self, timeout=8, check_local=False, base_dir="."):
+        self.timeout = timeout
+        self.check_local = check_local
+        self.base_dir = base_dir
+
+        # Cache structure: { "https://example.com": (is_alive, "HTTP 200") }
+        self.cache = {}
+        self.lock = threading.Lock()
+
+        # Reusable HTTP session with realistic browser headers
+        # (This prevents modern firewalls like Cloudflare from blocking our requests)
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        })
+
+    def check_url(self, url):
+        """
+        Tests whether a single URL responds properly.
+        Returns a tuple: (is_alive: bool, status_reason: str)
+        """
+        # Step 1: Check memory cache first to avoid re-testing identical links
+        with self.lock:
+            if url in self.cache:
+                is_alive, reason = self.cache[url]
+                return is_alive, f"{reason} (cached)"
+
+        parsed = urlparse(url)
+
+        # Step 2: Handle Local / Relative links (e.g. href="about.html")
+        if parsed.scheme not in ("http", "https"):
+            if self.check_local:
+                # Remove URL anchors (#section) or query params (?x=1) before checking disk
+                clean_path = url.split("?")[0].split("#")[0]
+                target_path = os.path.normpath(os.path.join(self.base_dir, clean_path))
+
+                if os.path.exists(target_path):
+                    res = (True, "Local file exists")
+                else:
+                    res = (False, f"Local file not found ({target_path})")
+            else:
+                res = (True, "Local/relative link (skipped)")
+
+            with self.lock:
+                self.cache[url] = res
+            return res
+
+        # Step 3: Handle Remote Web links (http/https)
+        try:
+            # We first try a lightweight HEAD request (checks status without downloading body).
+            response = self.session.head(
+                url,
+                allow_redirects=True,
+                timeout=self.timeout
+            )
+
+            # Many web servers block HEAD or return 400/403/405, so we fall back to GET (streamed)
+            if response.status_code in (400, 403, 404, 405) or response.status_code >= 500:
+                response = self.session.get(
+                    url,
+                    allow_redirects=True,
+                    timeout=self.timeout,
+                    stream=True  # stream=True avoids downloading heavy files/images
+                )
+                response.close()
+
+            # Status codes below 400 (e.g. 200 OK, 301 Redirect) are working links
+            status_code = response.status_code
+            if status_code < 400:
+                res = (True, f"HTTP {status_code}")
+            else:
+                res = (False, f"HTTP {status_code}")
+
+        # Step 4: Catch common network errors and provide human-readable causes
+        except requests.exceptions.Timeout:
+            res = (False, f"Timeout after {self.timeout}s")
+        except requests.exceptions.SSLError:
+            res = (False, "SSL Certificate Error")
+        except requests.exceptions.ConnectionError:
+            res = (False, "Connection / DNS Error")
+        except requests.exceptions.RequestException as e:
+            res = (False, f"Request failed ({type(e).__name__})")
+
+        # Save result to cache
+        with self.lock:
+            self.cache[url] = res
+        return res
+
+
+# ==============================================================================
+# Satisfaction Survey
+# ------------------------------------------------------------------------------
+# Shown at the end of every run. Asks the user if the tool was useful.
+# If they say no, they are shown a GitHub Issues link to submit feedback.
+# ==============================================================================
+GITHUB_ISSUES_URL = "https://github.com/tokaiteio1993-1988/auto_link/issues/new"
+
+
+def satisfaction_survey():
+    """Prints a short satisfaction survey to the terminal after execution."""
+    print(f"\n{BOLD}{CYAN}{'─' * 60}{RESET}")
+    print(f"{BOLD} Was auto_link useful to you?{RESET}")
+    print(f"{CYAN}{'─' * 60}{RESET}")
+    print(f" {GREEN}y{RESET} → Yes, it worked great! 🎉")
+    print(f" {RED}n{RESET} → No, something could be better 🔧")
+    print(f" {YELLOW}s{RESET} → Skip survey")
+
+    answer = input("\nYour answer (y/n/s): ").strip().lower()
+
+    if answer in ("y", "yes"):
+        print(f"\n{GREEN}Thanks for the feedback! Glad it helped. 😊{RESET}")
+        print(f"{CYAN}Give it a ⭐ on GitHub if you'd like to support the project:{RESET}")
+        print(f"{WHITE}  https://github.com/tokaiteio1993-1988/auto_link{RESET}\n")
+
+    elif answer in ("n", "no"):
+        print(f"\n{YELLOW}Sorry to hear that! Tell us what could be improved:{RESET}")
+        suggestion = input("Your suggestion (press Enter to skip): ").strip()
+
+        # Build a pre-filled GitHub Issue URL with the user's suggestion
+        import urllib.parse
+        body = "🔧 **What didn't work or could be better?**\n\n"
+        if suggestion:
+            body += suggestion
+        else:
+            body += "(Write your suggestion here)"
+        body += "\n\n**Steps to reproduce (if applicable):**\n1. \n2. \n3. \n\n**Expected behavior:**\n\n**Actual behavior:**"
+
+        params = urllib.parse.urlencode({
+            "title": "Suggestion: ",
+            "labels": "feedback,improvement",
+            "body": body
+        })
+        full_url = f"{GITHUB_ISSUES_URL}?{params}"
+
+        print(f"\n{CYAN}Open this link in your browser to submit your feedback:{RESET}")
+        print(f"{WHITE}  {full_url}{RESET}\n")
+    else:
+        print(f"\n{YELLOW}Survey skipped. Thanks for using auto_link!{RESET}\n")
+
+
+# ==============================================================================
+# Self-Update Feature
+# ------------------------------------------------------------------------------
+# Checks the remote GitHub repository for a newer version of auto_link.py
+# and updates the local file automatically.
+# ==============================================================================
+def self_update():
+    """Fetches the latest code from GitHub and updates this script in place."""
+    print(f"\n{CYAN}[+] Checking for updates from GitHub...{RESET}")
+    try:
+        response = requests.get(GITHUB_RAW_URL, timeout=10)
+        if response.status_code != 200:
+            print(f"{RED}[!] Failed to fetch update from GitHub (HTTP {response.status_code}).{RESET}")
+            return False
+
+        remote_code = response.text
+
+        # Extract the version number defined in the remote file
+        remote_version = None
+        for line in remote_code.splitlines():
+            if line.startswith("__version__"):
+                remote_version = line.split("=")[1].strip().strip('"').strip("'")
+                break
+
+        current_script_path = os.path.realpath(__file__)
+
+        if remote_version:
+            print(f"Current version: {WHITE}{__version__}{RESET}")
+            print(f"Latest version:  {WHITE}{remote_version}{RESET}")
+
+            if remote_version == __version__:
+                print(f"{GREEN}[✓] auto_link is already up to date!{RESET}")
+                return True
+
+            print(f"{YELLOW}[*] Newer version ({remote_version}) available! Updating...{RESET}")
+        else:
+            print(f"{YELLOW}[*] Updating auto_link to latest GitHub commit...{RESET}")
+
+        # Overwrite the current script with the updated code
+        try:
+            with open(current_script_path, "w", encoding="utf-8") as f:
+                f.write(remote_code)
+            print(f"{GREEN}[✓] Successfully updated {current_script_path} to version {remote_version or 'latest'}!{RESET}")
+            return True
+        except PermissionError:
+            print(f"{RED}[!] Permission denied when writing to '{current_script_path}'.{RESET}")
+            print(f"{YELLOW}[i] If installed in /usr/local/bin, run with sudo: 'sudo auto_link --update'{RESET}")
+            return False
+
+    except requests.exceptions.RequestException as e:
+        print(f"{RED}[!] Network error while checking for updates: {e}{RESET}")
+        return False
+
+
+# ==============================================================================
+# Helper: HTML File Discovery
+# ------------------------------------------------------------------------------
+# Finds all .html or .htm files given a single file or a folder path.
+# ==============================================================================
+def collect_html_files(target_path, recursive=False):
+    """
+    Scans target_path and returns an absolute list of HTML files.
+    Works for both single files and directory paths.
+    """
+    # Case 1: Target is a single file
+    if os.path.isfile(target_path):
+        if not target_path.lower().endswith((".html", ".htm")):
+            print(f"{RED}[!] Error: File '{target_path}' does not have an HTML extension (.html, .htm).{RESET}")
+            return []
+        return [os.path.abspath(target_path)]
+
+    # Case 2: Target is a directory
+    if os.path.isdir(target_path):
+        matched_files = []
+        if recursive:
+            # Recursively walk through all subfolders
+            for root, _, files in os.walk(target_path):
+                for file in files:
+                    if file.lower().endswith((".html", ".htm")):
+                        matched_files.append(os.path.abspath(os.path.join(root, file)))
+        else:
+            # Only scan top-level directory
+            for item in os.listdir(target_path):
+                full_path = os.path.join(target_path, item)
+                if os.path.isfile(full_path) and item.lower().endswith((".html", ".htm")):
+                    matched_files.append(os.path.abspath(full_path))
+
+        matched_files.sort()
+        return matched_files
+
+    print(f"{RED}[!] Error: Path '{target_path}' was not found.{RESET}")
+    return []
+
+
+# ==============================================================================
+# Core Engine: Process Single HTML File
+# ------------------------------------------------------------------------------
+# Parses the HTML, checks links in parallel, and applies cleaning options.
+# ==============================================================================
+def process_html_file(html_file, checker, workers=10, auto_action=None, in_place=False, custom_output=None):
+    """Analyzes links within an HTML file and offers interactive or automatic cleaning."""
+    print(f"\n{BOLD}{CYAN}============================================================{RESET}")
+    print(f"{BOLD}Analyzing: {WHITE}{html_file}{RESET}")
+    print(f"{BOLD}{CYAN}============================================================{RESET}")
+
+    # Step 1: Read and parse HTML with BeautifulSoup
+    try:
+        with open(html_file, "r", encoding="utf-8", errors="ignore") as f:
+            soup = BeautifulSoup(f, "html.parser")
+    except Exception as e:
+        print(f"{RED}[!] Error reading file: {e}{RESET}")
+        return
+
+    # Step 2: Extract candidate links from all <a> tags
+    link_elements = soup.find_all("a", href=True)
+    valid_links = []
+    skipped_count = 0
+
+    for link in link_elements:
+        url = link["href"].strip()
+
+        # Skip empty links and in-page anchor links like #section
+        if not url or url.startswith("#"):
+            continue
+
+        parsed = urlparse(url)
+
+        # Skip non-web protocols like mailto:someone@example.com or javascript:void(0)
+        if parsed.scheme in ("javascript", "mailto", "tel", "sms"):
+            continue
+
+        # If not http/https and local checking is turned off, skip
+        if parsed.scheme not in ("http", "https") and not checker.check_local:
+            skipped_count += 1
+            continue
+
+        valid_links.append((link, url))
+
+    total_links = len(valid_links)
+    print(f"Total links to check: {WHITE}{total_links}{RESET}")
+    if skipped_count:
+        print(f"Local/relative links skipped: {WHITE}{skipped_count}{RESET} (use --check-local to verify them)")
+
+    if total_links == 0:
+        print(f"{GREEN}[✓] No external links to verify in this document.{RESET}")
+        return
+
+    print(f"\n{BLUE}[+] Checking {total_links} links with {workers} parallel workers...{RESET}\n")
+
+    # Step 3: Run concurrent link checking using ThreadPoolExecutor
+    broken_entries = []  # Stores tuples of: (tag_element, url, reason)
+    lock_print = threading.Lock()
+    completed_count = 0
+
+    def check_task(item):
+        tag, url = item
+        is_alive, reason = checker.check_url(url)
+        return tag, url, is_alive, reason
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [executor.submit(check_task, item) for item in valid_links]
+        for future in as_completed(futures):
+            tag, url, is_alive, reason = future.result()
+            with lock_print:
+                completed_count += 1
+                progress = f"[{completed_count}/{total_links}]"
+
+                if is_alive:
+                    print(f"{progress} {WHITE}{url}{RESET} -> {GREEN}✓ OK ({reason}){RESET}")
+                else:
+                    print(f"{progress} {WHITE}{url}{RESET} -> {RED}✗ BROKEN ({reason}){RESET}")
+                    broken_entries.append((tag, url, reason))
+
+    # Summary
+    print(f"\n{BOLD}[+] Summary for {os.path.basename(html_file)}:{RESET}")
+    print(f"    - Broken links:  {RED if broken_entries else GREEN}{len(broken_entries)}{RESET}")
+    print(f"    - Working links: {GREEN}{total_links - len(broken_entries)}{RESET}")
+
+    if not broken_entries:
+        print(f"{GREEN}[✓] All links are functional. No changes needed.{RESET}")
+        return
+
+    # Step 4: Handle cleaning choice (interactive menu or CLI flag)
+    choice = auto_action
+    if not choice:
+        print("\nCleaning options:")
+        print(" 1. Unwrap (remove link tag, keep anchor text) [Recommended]")
+        print(" 2. Decompose (delete entire link tag and its text)")
+        print(" 3. Replace broken URLs interactively")
+        print(" n. Do not modify file")
+
+        choice = input("\nChoose an option (1/2/3/n): ").strip().lower()
+
+    # Option 1: Unwrap -> Removes <a> tag but leaves the text inside intact!
+    # Example: '<a href="broken">Click here</a>' becomes 'Click here'
+    if choice in ("1", "unwrap", "yes", "y", ""):
+        for tag, _, _ in broken_entries:
+            tag.unwrap()
+        print(f"{GREEN}[+] Unwrapped {len(broken_entries)} broken link(s).{RESET}")
+
+    # Option 2: Decompose -> Completely deletes the <a> tag and all its inner text
+    elif choice in ("2", "decompose"):
+        for tag, _, _ in broken_entries:
+            tag.decompose()
+        print(f"{YELLOW}[+] Removed {len(broken_entries)} broken link tag(s).{RESET}")
+
+    # Option 3: Replace -> Prompts user for a replacement URL for each broken link
+    elif choice in ("3", "replace"):
+        for tag, url, reason in broken_entries:
+            print(f"\nBroken link: {RED}{url}{RESET} ({reason})")
+            new_url = input("Enter replacement URL (or press Enter to unwrap): ").strip()
+            if new_url:
+                tag["href"] = new_url
+                print(f"{GREEN}→ Replaced with: {new_url}{RESET}")
+            else:
+                tag.unwrap()
+                print(f"{YELLOW}→ Unwrapped link.{RESET}")
+    else:
+        print("[+] No modifications made to file.")
+        return
+
+    # Step 5: Save output file
+    if custom_output:
+        if os.path.isdir(custom_output):
+            output_file = os.path.join(custom_output, os.path.basename(html_file))
+        else:
+            output_file = custom_output
+    elif in_place:
+        # Create a backup file (.bak) before overwriting original
+        backup_file = html_file + ".bak"
+        try:
+            with open(html_file, "r", encoding="utf-8", errors="ignore") as src, \
+                 open(backup_file, "w", encoding="utf-8") as dst:
+                dst.write(src.read())
+            print(f"{CYAN}[i] Backup created at: {backup_file}{RESET}")
+        except Exception as e:
+            print(f"{YELLOW}[!] Could not create backup file: {e}{RESET}")
+        output_file = html_file
+    else:
+        # Default safety behavior: write to cleaned_<filename>.html
+        dir_name = os.path.dirname(html_file)
+        base_name = "cleaned_" + os.path.basename(html_file)
+        output_file = os.path.join(dir_name, base_name) if dir_name else base_name
+
+    try:
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(str(soup))
+        print(f"{GREEN}[✓] Saved cleaned document to: {output_file}{RESET}")
+    except Exception as e:
+        print(f"{RED}[!] Error writing output file: {e}{RESET}")
+
+
+# ==============================================================================
+# CLI Entrypoint
+# ==============================================================================
+def main():
+    parser = argparse.ArgumentParser(
+        description="Fast, multi-threaded broken link checker and cleaner for HTML files.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""Examples:
+  auto_link index.html
+  auto_link ./website_folder/ -r
+  auto_link doc.html --in-place --unwrap
+  auto_link --update
+"""
+    )
+    parser.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        help="Path to an HTML file or a directory containing HTML files"
+    )
+    parser.add_argument(
+        "-r", "--recursive",
+        action="store_true",
+        help="Recursively scan subdirectories for HTML files"
+    )
+    parser.add_argument(
+        "-w", "--workers",
+        type=int,
+        default=10,
+        help="Number of concurrent checking threads (default: 10)"
+    )
+    parser.add_argument(
+        "-t", "--timeout",
+        type=int,
+        default=8,
+        help="HTTP request timeout in seconds (default: 8)"
+    )
+    parser.add_argument(
+        "-o", "--output",
+        default=None,
+        help="Output destination path or directory"
+    )
+    parser.add_argument(
+        "-i", "--in-place",
+        action="store_true",
+        help="Overwrite target HTML file in place (creates .bak backup)"
+    )
+    parser.add_argument(
+        "--check-local",
+        action="store_true",
+        help="Verify if local relative files referenced by links exist on disk"
+    )
+    parser.add_argument(
+        "--unwrap",
+        action="store_const",
+        dest="auto_action",
+        const="unwrap",
+        help="Non-interactive: Automatically unwrap all broken links"
+    )
+    parser.add_argument(
+        "--decompose",
+        action="store_const",
+        dest="auto_action",
+        const="decompose",
+        help="Non-interactive: Automatically remove broken link tags completely"
+    )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Check for updates from GitHub and update auto_link"
+    )
+    parser.add_argument(
+        "-v", "--version",
+        action="version",
+        version=f"auto_link {__version__}"
+    )
+
+    args = parser.parse_args()
+
+    # If --update was specified, run self-updater and exit
+    if args.update:
+        self_update()
+        return
+
+    # If no target file/folder was provided, display help
+    if not args.target:
+        parser.print_help()
+        sys.exit(1)
+
+    html_files = collect_html_files(args.target, recursive=args.recursive)
+    if not html_files:
+        print(f"{RED}[!] No HTML files found to process at '{args.target}'.{RESET}")
+        sys.exit(1)
+
+    print(f"{GREEN}[+] Found {len(html_files)} HTML file(s) to process.{RESET}")
+
+    base_dir = args.target if os.path.isdir(args.target) else os.path.dirname(args.target) or "."
+    checker = LinkChecker(
+        timeout=args.timeout,
+        check_local=args.check_local,
+        base_dir=base_dir
+    )
+
+    # Process all matched HTML files
+    for html_file in html_files:
+        checker.base_dir = os.path.dirname(html_file) or "."
+        process_html_file(
+            html_file=html_file,
+            checker=checker,
+            workers=args.workers,
+            auto_action=args.auto_action,
+            in_place=args.in_place,
+            custom_output=args.output
+        )
+
+    print(f"\n{BOLD}{GREEN}[✓] Finished processing all files!{RESET}\n")
+
+    # Show satisfaction survey at the end of every run
+    satisfaction_survey()
+
+
+if __name__ == "__main__":
+    main()

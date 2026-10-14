@@ -1,56 +1,128 @@
-# auto_link
+# auto_link 
 
-**auto_link** es una aplicación de terminal desarrollada en Python que permite comprobar si las URL contenidas en un archivo HTML son válidas y conducen a sitios web accesibles.
+**auto_link** is a fast, multi-threaded CLI tool built with Python to analyze hyperlinks inside HTML files or entire directory trees, detect broken or inaccessible links (HTTP errors, timeouts, SSL issues), and clean or repair them automatically without damaging the document's structure.
 
-## Instalación y ejecución
+---
 
-Para ejecutar la aplicación como un programa independiente desde la terminal, primero hay que darle permisos de ejecución:
+##  Installation & Requirements
 
-```bash
-chmod +x auto_link.py
-```
-
-Si se desea ejecutar el programa desde cualquier directorio mediante el comando `auto_link`, es necesario mover el archivo a la ruta `/usr/local/bin/` y asegurarse de que tenga los permisos adecuados.
-
-También se puede ejecutar directamente con Python desde el directorio en el que se encuentre el archivo:
+### Prerequisites
+Requires **Python 3.8+**. Install dependencies:
 
 ```bash
-python3 auto_link.py archivo.html
+pip install -r requirements.txt
 ```
 
-Una vez instalado correctamente, se podrá utilizar de la siguiente manera:
-
+### Linux / macOS
+Run the automated installer:
 ```bash
-auto_link archivo.html
+chmod +x install.sh
+./install.sh
+```
+*(Runs as standard user to install in `~/.local/bin`, or with `sudo ./install.sh` for system-wide `/usr/local/bin`).*
+
+### Windows
+You can run it directly with:
+```powershell
+python auto_link.py document.html
+```
+Or use the convenience launcher `auto_link.bat`:
+```cmd
+auto_link document.html
 ```
 
-## Requisitos
+####  About `auto_link.bat` (Safety & Transparency)
+On Windows, `.bat` batch files can sometimes look unfamiliar or suspicious. **`auto_link.bat` is 100% safe, transparent, and open-source:**
+* **What does it do?** It simply forwards arguments to Python: `python "%~dp0auto_link.py" %*`. This lets you run `auto_link` like a native command without typing `python auto_link.py` every time.
+* **No administrator rights needed:** It never requests or requires elevated administrator privileges.
+* **No system changes:** It does not modify Windows system files, PATH, or the registry.
+* **Fully auditable:** You can open `auto_link.bat` in Notepad at any time to verify its single command line.
 
-La aplicación necesita Python 3 y las siguientes dependencias:
+---
 
+##  Usage & Examples
+
+### 1. Check a single file
 ```bash
-pip install requests beautifulsoup4
+auto_link index.html
 ```
 
-## Funciones principales
-
-- **Detección de enlaces rotos:** identifica enlaces que devuelven errores HTTP 4xx o 5xx.
-- **Filtrado de enlaces:** ignora enlaces internos del documento y enlaces JavaScript que no corresponden a URL web convencionales.
-- **Eliminación de enlaces rotos:** permite al usuario eliminar los enlaces detectados como rotos si así lo desea.
-- **Generación de HTML limpio:** crea una versión del archivo HTML sin los enlaces rotos que se hayan eliminado.
-
-## Comando de uso
-
-La aplicación recibe como argumento la ruta del archivo HTML que se desea analizar:
-
+### 2. Scan an entire directory
+Scan all `.html` files in a folder:
 ```bash
-python3 auto_link.py archivo.html
+auto_link ./my_website/
 ```
-
-Si se ha instalado correctamente en `/usr/local/bin/`, también se puede ejecutar mediante:
-
+Scan subdirectories recursively:
 ```bash
-auto_link archivo.html
+auto_link ./my_website/ -r
 ```
 
-**Objetivo del proyecto:** automatizar la comprobación de enlaces en archivos HTML, facilitar la detección de URL inaccesibles y permitir la limpieza del documento de forma sencilla desde la terminal.
+### 3. Faster checking (concurrency)
+Check with 20 parallel threads (default is 10):
+```bash
+auto_link document.html -w 20
+```
+
+### 4. Non-interactive / CI-CD mode
+Automatically unwrap broken links (remove `<a>` tag, keep text) and overwrite in place (with automatic `.bak` backup):
+```bash
+auto_link index.html --in-place --unwrap
+```
+
+### 5. Self-update to the latest version
+Fetch and install the latest version directly from GitHub:
+```bash
+auto_link --update
+```
+
+---
+
+##  CLI Options & Flags
+
+| Flag | Description |
+|---|---|
+| `target` | Path to an HTML file or a directory containing HTML files |
+| `-r, --recursive` | Recursively scan subdirectories for HTML files |
+| `-w, --workers <N>` | Number of parallel checking threads (default: `10`) |
+| `-t, --timeout <S>` | Request timeout in seconds (default: `8`) |
+| `-o, --output <PATH>`| Custom output file or directory path |
+| `-i, --in-place` | Overwrite original file in-place (creates `.bak` backup) |
+| `--unwrap` | Automatically unwrap broken links (non-interactive) |
+| `--decompose` | Automatically remove broken link tags completely |
+| `--check-local` | Verify if referenced local files exist on disk |
+| `--update` | Check GitHub for updates and self-update |
+| `-v, --version` | Display version number |
+
+---
+
+##  Key Features
+
+* **Multi-threaded Performance:** Concurrent checks with connection pooling (`requests.Session`) and thread-safe caching to skip duplicate URLs.
+* **Directory Support:** Check single files or entire folders recursively.
+* **Smart Detection:** Fast `HEAD` requests with automatic fallback to `GET (stream)`. Catches HTTP 4xx/5xx, timeouts, DNS/connection issues, and SSL errors.
+* **Non-destructive Cleaning (`unwrap`):** Preserves original text content so sentences remain natural.
+* **Interactive URL Replacement:** Option to supply a replacement URL on the fly.
+* **Self-updating:** Easily stay on the latest version using `auto_link --update`.
+
+---
+
+##  Repository Structure
+
+* [`auto_link.py`](auto_link.py): Main multi-threaded CLI script.
+* [`install.sh`](install.sh): Linux/macOS installer for `auto_link`.
+* [`auto_link.bat`](auto_link.bat): Windows command runner.
+* [`requirements.txt`](requirements.txt): Python dependencies.
+
+---
+
+## Was auto_link useful to you?
+
+We'd love to know if this tool helped! Your feedback takes 5 seconds and makes a real difference.
+
+| | |
+|:---:|:---:|
+| **Yes, it worked great!**  | **No, something could be better**  |
+| [ Click here to say it helped!](https://github.com/tokaiteio1993-1988/auto_link/issues/new?title=Feedback%3A+auto_link+was+helpful!&labels=feedback%2Cpositive&body=%F0%9F%91%8D+It+worked+great+for+me!%0A%0A**What+did+you+use+it+for%3F**%0A(optional)+Tell+us+your+use+case+here.) | [ Click here to suggest an improvement](https://github.com/tokaiteio1993-1988/auto_link/issues/new?title=Suggestion%3A+&labels=feedback%2Cimprovement&body=%F0%9F%94%A7+**What+didn%27t+work+or+could+be+better%3F**%0A%0A(Describe+the+problem+or+your+suggestion+here.)%0A%0A**Steps+to+reproduce+(if+applicable)%3A**%0A1.+%0A2.+%0A3.+%0A%0A**Expected+behavior%3A**%0A%0A**Actual+behavior%3A**) |
+
+> All feedback is submitted as a **GitHub Issue** — reviewable by anyone and answered by the author.
+

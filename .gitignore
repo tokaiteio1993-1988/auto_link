@@ -1,0 +1,16 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Archivos temporales o de prueba generados por auto_link
+cleaned_*.html
+
+# Entornos virtuales
+venv/
+.venv/
+env/
+
+# Entornos y configuración de editores
+.vscode/
+.idea/
