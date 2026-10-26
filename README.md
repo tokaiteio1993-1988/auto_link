@@ -115,14 +115,13 @@ auto_link --update
 
 ---
 
-## Was auto_link useful to you?
+## ¿Te ha sido útil auto_link? / Was auto_link useful to you?
 
-We'd love to know if this tool helped! Your feedback takes 5 seconds and makes a real difference.
+Tu opinión es muy importante para seguir mejorando la herramienta:
 
-| | |
+|  **Sí, me ha sido útil / Yes, it worked great!** | 🔧 **No, algo falló / No, something could be better** |
 |:---:|:---:|
-| **Yes, it worked great!**  | **No, something could be better**  |
-| [ Click here to say it helped!](https://github.com/tokaiteio1993-1988/auto_link/issues/new?title=Feedback%3A+auto_link+was+helpful!&labels=feedback%2Cpositive&body=%F0%9F%91%8D+It+worked+great+for+me!%0A%0A**What+did+you+use+it+for%3F**%0A(optional)+Tell+us+your+use+case+here.) | [ Click here to suggest an improvement](https://github.com/tokaiteio1993-1988/auto_link/issues/new?title=Suggestion%3A+&labels=feedback%2Cimprovement&body=%F0%9F%94%A7+**What+didn%27t+work+or+could+be+better%3F**%0A%0A(Describe+the+problem+or+your+suggestion+here.)%0A%0A**Steps+to+reproduce+(if+applicable)%3A**%0A1.+%0A2.+%0A3.+%0A%0A**Expected+behavior%3A**%0A%0A**Actual+behavior%3A**) |
+| **¡Gracias por usar la aplicación!**<br>Si te sirvió, apoya el proyecto dándole una estrella ⭐ en GitHub:<br><br>[⭐ Dar estrella al repositorio](https://github.com/tokaiteio1993-1988/auto_link) | **Por favor, ve a la sección de Issues**<br>Reporta el fallo o propón mejoras en el repositorio:<br><br>[ Ver Issues en GitHub](https://github.com/tokaiteio1993-1988/auto_link/issues) &nbsp;•&nbsp; [ Abrir nuevo Issue](https://github.com/tokaiteio1993-1988/auto_link/issues/new) |
 
-> All feedback is submitted as a **GitHub Issue** — reviewable by anyone and answered by the author.
+> Enlace oficial del repositorio: [https://github.com/tokaiteio1993-1988/auto_link](https://github.com/tokaiteio1993-1988/auto_link)
 

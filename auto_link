@@ -146,50 +146,46 @@ class LinkChecker:
 # ------------------------------------------------------------------------------
 # Shown at the end of every run. Asks the user if the tool was useful.
 # If they say no, they are shown a GitHub Issues link to submit feedback.
-# ==============================================================================
-GITHUB_ISSUES_URL = "https://github.com/tokaiteio1993-1988/auto_link/issues/new"
+GITHUB_REPO_URL = "https://github.com/tokaiteio1993-1988/auto_link"
+GITHUB_ISSUES_URL = "https://github.com/tokaiteio1993-1988/auto_link/issues"
+GITHUB_NEW_ISSUE_URL = "https://github.com/tokaiteio1993-1988/auto_link/issues/new"
 
 
 def satisfaction_survey():
     """Prints a short satisfaction survey to the terminal after execution."""
     print(f"\n{BOLD}{CYAN}{'─' * 60}{RESET}")
-    print(f"{BOLD} Was auto_link useful to you?{RESET}")
+    print(f"{BOLD} ¿Te ha sido útil auto_link? / Was auto_link useful to you?{RESET}")
     print(f"{CYAN}{'─' * 60}{RESET}")
-    print(f" {GREEN}y{RESET} → Yes, it worked great! 🎉")
-    print(f" {RED}n{RESET} → No, something could be better 🔧")
-    print(f" {YELLOW}s{RESET} → Skip survey")
+    print(f" {GREEN}s / y{RESET} → Sí / Yes 🎉")
+    print(f" {RED}n{RESET}     → No 🔧")
+    print(f" {YELLOW}o / skip{RESET} → Omitir / Skip")
 
-    answer = input("\nYour answer (y/n/s): ").strip().lower()
+    try:
+        answer = input("\nTu respuesta / Your answer: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
 
-    if answer in ("y", "yes"):
-        print(f"\n{GREEN}Thanks for the feedback! Glad it helped. {RESET}")
-        print(f"{CYAN}Give it a ⭐ on GitHub if you'd like to support the project:{RESET}")
-        print(f"{WHITE}  https://github.com/tokaiteio1993-1988/auto_link{RESET}\n")
+    if answer in ("s", "si", "sí", "y", "yes"):
+        print(f"\n{GREEN}{BOLD}¡Gracias por usar la aplicación! / Thanks for using the application! 😊{RESET}")
+        print(f"{CYAN}Si te ha gustado, dale una ⭐ en GitHub:{RESET}")
+        print(f"{WHITE}  {GITHUB_REPO_URL}{RESET}\n")
 
     elif answer in ("n", "no"):
-        print(f"\n{YELLOW}Sorry to hear that! Tell us what could be improved:{RESET}")
-        suggestion = input("Your suggestion (press Enter to skip): ").strip()
+        print(f"\n{YELLOW}{BOLD}Lamentamos que no te haya sido útil.{RESET}")
+        print(f"{CYAN}Por favor, ve a los issues de GitHub para reportar el problema o sugerir mejoras:{RESET}")
+        print(f"{WHITE}{BOLD}  {GITHUB_ISSUES_URL}{RESET}")
+        print(f"{CYAN}O crea un nuevo issue directamente en:{RESET}")
+        print(f"{WHITE}  {GITHUB_NEW_ISSUE_URL}{RESET}\n")
 
-        # Build a pre-filled GitHub Issue URL with the user's suggestion
-        import urllib.parse
-        body = "🔧 **What didn't work or could be better?**\n\n"
-        if suggestion:
-            body += suggestion
-        else:
-            body += "(Write your suggestion here)"
-        body += "\n\n**Steps to reproduce (if applicable):**\n1. \n2. \n3. \n\n**Expected behavior:**\n\n**Actual behavior:**"
-
-        params = urllib.parse.urlencode({
-            "title": "Suggestion: ",
-            "labels": "feedback,improvement",
-            "body": body
-        })
-        full_url = f"{GITHUB_ISSUES_URL}?{params}"
-
-        print(f"\n{CYAN}Open this link in your browser to submit your feedback:{RESET}")
-        print(f"{WHITE}  {full_url}{RESET}\n")
+        # Intentar abrir el navegador automáticamente en la página de issues
+        try:
+            import webbrowser
+            webbrowser.open(GITHUB_NEW_ISSUE_URL)
+        except Exception:
+            pass
     else:
-        print(f"\n{YELLOW}Survey skipped. Thanks for using auto_link!{RESET}\n")
+        print(f"\n{YELLOW}¡Gracias por usar la aplicación! / Thanks for using the application!{RESET}\n")
 
 
 # ==============================================================================
